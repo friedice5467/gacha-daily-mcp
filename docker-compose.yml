@@ -1,0 +1,10 @@
+services:
+  gacha-mcp:
+    build: .
+    ports:
+      - "${GACHA_PORT:-8420}:8420"
+    volumes:
+      - "${GACHA_DB_PATH:-~/gacha-mcp}:/data"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

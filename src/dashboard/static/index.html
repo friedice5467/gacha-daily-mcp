@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gacha-mcp</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#242836;--border:#2e3348;--text:#e2e8f0;--text2:#94a3b8;--accent:#6366f1;--accent2:#818cf8;--green:#22c55e;--red:#ef4444;--orange:#f59e0b;--radius:8px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+.app{max-width:1200px;margin:0 auto;padding:16px}
+h1{font-size:1.4rem;margin-bottom:16px;color:var(--accent2)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tab{padding:8px 16px;cursor:pointer;border:none;background:none;color:var(--text2);font-size:.9rem;border-bottom:2px solid transparent;transition:.15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent2);border-bottom-color:var(--accent)}
+.panel{display:none}
+.panel.active{display:block}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+.card h3{font-size:1rem;margin-bottom:12px;color:var(--accent2)}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.row>.card{flex:1;min-width:300px}
+label{display:block;font-size:.8rem;color:var(--text2);margin-bottom:4px;margin-top:8px}
+input,select,textarea{width:100%;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:.9rem;font-family:inherit}
+textarea{resize:vertical;min-height:60px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:.85rem;transition:.15s}
+.btn{background:var(--accent);color:#fff}
+.btn:hover{background:var(--accent2)}
+.btn-danger{background:var(--red);color:#fff}
+.btn-danger:hover{opacity:.8}
+.btn-sm{padding:4px 10px;font-size:.8rem}
+.btn-outline{background:none;border:1px solid var(--border);color:var(--text2)}
+.btn-outline:hover{border-color:var(--accent);color:var(--text)}
+.status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.status-dot.on{background:var(--green)}
+.status-dot.off{background:var(--red)}
+.log-stream{background:var(--surface2);border-radius:4px;padding:8px;height:300px;overflow-y:auto;font-family:monospace;font-size:.8rem;line-height:1.6}
+.log-line{color:var(--text2)}
+.log-line .action{color:var(--accent2)}
+.log-line .error{color:var(--red)}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;text-align:left;border-bottom:1px solid var(--border);font-size:.85rem}
+th{color:var(--text2);font-weight:500}
+.step-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px;cursor:grab}
+.step-card:active{cursor:grabbing}
+.step-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.step-num{background:var(--accent);color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:600}
+.cond-row{display:flex;gap:4px;margin-bottom:4px;align-items:center}
+.cond-row input,.cond-row select{width:auto;flex:1}
+.hidden{display:none}
+.toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:var(--radius);color:#fff;font-size:.85rem;z-index:1000;animation:slideIn .3s}
+.toast.success{background:var(--green)}
+.toast.error{background:var(--red)}
+@keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.empty{text-align:center;padding:40px;color:var(--text2)}
+.slider-row{display:flex;align-items:center;gap:12px}
+.slider-row input[type=range]{flex:1}
+.slider-val{min-width:40px;text-align:right;font-size:.85rem}
+.toggle{position:relative;width:40px;height:22px;display:inline-block}
+.toggle input{opacity:0;width:0;height:0}
+.toggle span{position:absolute;inset:0;background:var(--border);border-radius:11px;cursor:pointer;transition:.2s}
+.toggle input:checked+span{background:var(--accent)}
+.toggle span::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked+span::before{transform:translateX(18px)}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>gacha-mcp</h1>
+<div class="tabs">
+<button class="tab active" data-panel="status">Status</button>
+<button class="tab" data-panel="tasks">Tasks</button>
+<button class="tab" data-panel="llm">LLM Config</button>
+<button class="tab" data-panel="games">Games</button>
+<button class="tab" data-panel="safety">Safety</button>
+<button class="tab" data-panel="schedules">Schedules</button>
+</div>
+
+<!-- STATUS -->
+<div id="status" class="panel active">
+<div class="card">
+<h3>Connection</h3>
+<p><span id="adb-dot" class="status-dot off"></span> ADB: <span id="adb-status">Disconnected</span></p>
+</div>
+<div class="card">
+<h3>Current Task</h3>
+<p id="current-task">No task running</p>
+<div style="margin-top:12px;display:flex;gap:8px">
+<select id="run-task-select" style="flex:1"></select>
+<button class="btn btn-sm" onclick="runTask()">Run</button>
+<button class="btn-danger btn-sm" onclick="stopTask()">Stop</button>
+</div>
+</div>
+<div class="card">
+<h3>Log</h3>
+<div id="log-stream" class="log-stream"></div>
+</div>
+</div>
+
+<!-- TASKS -->
+<div id="tasks" class="panel">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<h3>Tasks</h3>
+<button class="btn btn-sm" onclick="showTaskEditor()">+ New Task</button>
+</div>
+<div id="task-list"></div>
+<div id="task-editor" class="hidden">
+<div class="card">
+<h3 id="task-editor-title">New Task</h3>
+<label>Game</label>
+<select id="te-game"></select>
+<label>Name</label>
+<input id="te-name" placeholder="Task name">
+<h3 style="margin-top:16px">Steps</h3>
+<div id="te-steps"></div>
+<button class="btn-outline btn-sm" onclick="addStep()" style="margin-top:8px">+ Add Step</button>
+<div style="margin-top:16px;display:flex;gap:8px">
+<button class="btn" onclick="saveTask()">Save</button>
+<button class="btn-outline" onclick="cancelTaskEditor()">Cancel</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- LLM CONFIG -->
+<div id="llm" class="panel">
+<div class="row">
+<div class="card">
+<h3>Vision LLM</h3>
+<label>Backend</label>
+<select id="llm-v-backend" onchange="toggleLLMFields('v')">
+<option value="claude">Claude</option>
+<option value="openai_compat">LM Studio / Ollama</option>
+</select>
+<label>Model</label>
+<input id="llm-v-model" placeholder="claude-sonnet-4-6">
+<label id="llm-v-url-label">Base URL</label>
+<input id="llm-v-url" placeholder="http://localhost:1234/v1" class="hidden">
+<label id="llm-v-key-label">API Key</label>
+<input id="llm-v-key" type="password" placeholder="sk-...">
+<label>Max Tokens</label>
+<input id="llm-v-tokens" type="number" value="1024">
+<button class="btn btn-sm" onclick="saveLLM('vision','v')" style="margin-top:12px">Save</button>
+</div>
+<div class="card">
+<h3>Action LLM</h3>
+<label>Backend</label>
+<select id="llm-a-backend" onchange="toggleLLMFields('a')">
+<option value="claude">Claude</option>
+<option value="openai_compat">LM Studio / Ollama</option>
+</select>
+<label>Model</label>
+<input id="llm-a-model" placeholder="claude-sonnet-4-6">
+<label id="llm-a-url-label">Base URL</label>
+<input id="llm-a-url" placeholder="http://localhost:1234/v1" class="hidden">
+<label id="llm-a-key-label">API Key</label>
+<input id="llm-a-key" type="password" placeholder="sk-...">
+<label>Max Tokens</label>
+<input id="llm-a-tokens" type="number" value="1024">
+<label id="llm-a-tcm-label" class="hidden">Tool Calling Mode</label>
+<select id="llm-a-tcm" class="hidden">
+<option value="native">Native</option>
+<option value="text">Text (parsed)</option>
+</select>
+<button class="btn btn-sm" onclick="saveLLM('action','a')" style="margin-top:12px">Save</button>
+</div>
+</div>
+</div>
+
+<!-- GAMES -->
+<div id="games" class="panel">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<h3>Games</h3>
+<button class="btn btn-sm" onclick="showAddGame()">+ Add Game</button>
+</div>
+<div id="add-game-form" class="hidden card">
+<label>Package Name</label>
+<input id="ag-pkg" placeholder="com.YoStarEN.Arknights">
+<label>Display Name</label>
+<input id="ag-name" placeholder="Arknights">
+<label>Vision System Prompt</label>
+<textarea id="ag-prompt" placeholder="Describe this game to the vision LLM. E.g. 'This is Arknights, a tower defense gacha game. The main menu has a Terminal button for missions...'"></textarea>
+<div style="margin-top:8px;display:flex;gap:8px">
+<button class="btn btn-sm" onclick="addGame()">Add</button>
+<button class="btn-outline btn-sm" onclick="el('add-game-form').classList.add('hidden')">Cancel</button>
+</div>
+</div>
+<div id="game-list"></div>
+</div>
+
+<!-- SAFETY -->
+<div id="safety" class="panel">
+<div class="card">
+<h3>Safety Settings</h3>
+<label>Max Actions Per Minute</label>
+<div class="slider-row">
+<input type="range" id="sf-apm" min="1" max="60" value="20" oninput="el('sf-apm-val').textContent=this.value">
+<span id="sf-apm-val" class="slider-val">20</span>
+</div>
+<label>Max Actions Per Invocation</label>
+<div class="slider-row">
+<input type="range" id="sf-api" min="1" max="200" value="50" oninput="el('sf-api-val').textContent=this.value">
+<span id="sf-api-val" class="slider-val">50</span>
+</div>
+<label>Cooldown (seconds)</label>
+<div class="slider-row">
+<input type="range" id="sf-cool" min="0.5" max="10" step="0.5" value="2" oninput="el('sf-cool-val').textContent=this.value">
+<span id="sf-cool-val" class="slider-val">2</span>
+</div>
+<label style="margin-top:16px">
+<label class="toggle"><input type="checkbox" id="sf-currency" checked><span></span></label>
+Confirm premium currency dialogs
+</label>
+<label>
+<label class="toggle"><input type="checkbox" id="sf-sell" checked><span></span></label>
+Confirm sell/discard actions
+</label>
+<label>
+<label class="toggle"><input type="checkbox" id="sf-unknown" checked><span></span></label>
+Block on unknown screens
+</label>
+<label>Emergency Stop Key</label>
+<input id="sf-key" value="ctrl+shift+q" style="width:200px">
+<div style="margin-top:16px">
+<button class="btn btn-sm" onclick="saveSafety()">Save</button>
+</div>
+</div>
+</div>
+
+<!-- SCHEDULES -->
+<div id="schedules" class="panel">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<h3>Schedules</h3>
+<button class="btn btn-sm" onclick="showAddSchedule()">+ Add Schedule</button>
+</div>
+<div id="add-sched-form" class="hidden card">
+<label>Task</label>
+<select id="as-task"></select>
+<label>Cron Expression</label>
+<input id="as-cron" placeholder="0 6 * * *">
+<div style="margin-top:8px">
+<button class="btn btn-sm" onclick="addSchedule()">Add</button>
+<button class="btn-outline btn-sm" onclick="el('add-sched-form').classList.add('hidden')">Cancel</button>
+</div>
+</div>
+<div id="sched-list"></div>
+</div>
+</div>
+
+<script>
+const el=id=>document.getElementById(id);
+const api=async(path,opts={})=>{const r=await fetch('/api/'+path,{headers:{'Content-Type':'application/json'},...opts});return r.json()};
+const post=(path,body)=>api(path,{method:'POST',body:JSON.stringify(body)});
+const put=(path,body)=>api(path,{method:'PUT',body:JSON.stringify(body)});
+const del=path=>api(path,{method:'DELETE'});
+
+let editingTaskId=null;
+
+function toast(msg,type='success'){const t=document.createElement('div');t.className='toast '+type;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3000)}
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab=>{
+tab.onclick=()=>{
+document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+tab.classList.add('active');
+el(tab.dataset.panel).classList.add('active');
+loadPanel(tab.dataset.panel);
+}});
+
+function loadPanel(name){
+if(name==='status')loadStatus();
+if(name==='tasks')loadTasks();
+if(name==='llm')loadLLM();
+if(name==='games')loadGames();
+if(name==='safety')loadSafety();
+if(name==='schedules')loadSchedules();
+}
+
+// STATUS
+async function loadStatus(){
+const s=await api('status');
+el('adb-dot').className='status-dot '+(s.adb_connected?'on':'off');
+el('adb-status').textContent=s.adb_connected?'Connected':'Disconnected';
+if(s.current_run){
+el('current-task').textContent=`Task ${s.current_run.task_id} — ${s.current_run.status}`;
+}else{el('current-task').textContent='No task running'}
+const tasks=await api('tasks');
+const sel=el('run-task-select');
+sel.innerHTML=tasks.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+loadLogs();
+}
+
+async function loadLogs(){
+const runs=await api('runs?limit=50');
+const div=el('log-stream');
+div.innerHTML=runs.map(r=>`<div class="log-line">${r.created_at} <span class="action">[${r.action}]</span> ${r.step_name||''} ${r.details||''}</div>`).join('');
+div.scrollTop=div.scrollHeight;
+}
+
+async function runTask(){
+const id=el('run-task-select').value;
+if(!id)return;
+await post('status/run/'+id,{});
+toast('Task started');
+setTimeout(loadStatus,1000);
+}
+async function stopTask(){await post('status/stop',{});toast('Stop requested','error')}
+
+// TASKS
+async function loadTasks(){
+const tasks=await api('tasks');
+el('task-editor').classList.add('hidden');
+if(!tasks.length){el('task-list').innerHTML='<div class="empty">No tasks yet</div>';return}
+el('task-list').innerHTML=tasks.map(t=>`
+<div class="card">
+<div style="display:flex;justify-content:space-between;align-items:center">
+<div><strong>${t.name}</strong><br><small style="color:var(--text2)">${t.game_package} · ${t.step_count} steps</small></div>
+<div style="display:flex;gap:4px">
+<button class="btn-outline btn-sm" onclick="editTask('${t.id}')">Edit</button>
+<button class="btn-outline btn-sm" onclick="dupTask('${t.id}')">Dup</button>
+<button class="btn-danger btn-sm" onclick="delTask('${t.id}')">Del</button>
+</div></div></div>`).join('');
+}
+
+async function showTaskEditor(taskId){
+editingTaskId=taskId||null;
+el('task-editor').classList.remove('hidden');
+el('task-list').classList.add('hidden');
+el('task-editor-title').textContent=taskId?'Edit Task':'New Task';
+const games=await api('games');
+el('te-game').innerHTML=games.map(g=>`<option value="${g.package_name}">${g.display_name}</option>`).join('');
+if(taskId){
+const t=await api('tasks/'+taskId);
+el('te-name').value=t.name;
+el('te-game').value=t.game_package;
+el('te-steps').innerHTML='';
+t.steps.forEach(s=>addStep(s));
+}else{el('te-name').value='';el('te-steps').innerHTML='';addStep()}
+}
+
+async function editTask(id){await showTaskEditor(id)}
+async function dupTask(id){await post('tasks/'+id+'/duplicate',{});toast('Duplicated');loadTasks()}
+async function delTask(id){if(confirm('Delete?')){await del('tasks/'+id);toast('Deleted');loadTasks()}}
+function cancelTaskEditor(){el('task-editor').classList.add('hidden');el('task-list').classList.remove('hidden')}
+
+let stepCounter=0;
+function addStep(data){
+const idx=stepCounter++;
+const div=document.createElement('div');
+div.className='step-card';
+div.draggable=true;
+div.innerHTML=`
+<div class="step-header"><span class="step-num">${el('te-steps').children.length+1}</span>
+<button class="btn-danger btn-sm" onclick="this.closest('.step-card').remove();renumberSteps()">×</button></div>
+<label>Name</label><input class="sn" value="${data?data.name:''}">
+<label>Vision Prompt</label><textarea class="sv">${data?data.vision_prompt:''}</textarea>
+<label>Conditions</label>
+<div class="sc">${data&&data.conditions.length?data.conditions.map(c=>condRow(c)).join(''):'<div class="cond-row"><input placeholder="field" value="screen"><select><option>eq</option><option>neq</option><option>gt</option><option>gte</option><option>lt</option><option>lte</option><option>contains</option><option>exists</option></select><input placeholder="value" value=""><button class="btn-sm btn-outline" onclick="this.parentElement.remove()">×</button></div>'}</div>
+<button class="btn-outline btn-sm" onclick="this.previousElementSibling.insertAdjacentHTML('beforeend',condRow())" style="margin-top:4px">+ Condition</button>
+<div style="display:flex;gap:8px;margin-top:8px">
+<div style="flex:1"><label>On Match</label><select class="sm"><option value="next"${data&&data.on_match==='next'?' selected':''}>Next</option><option value="complete"${data&&data.on_match==='complete'?' selected':''}>Complete</option><option value="execute"${data&&typeof data?.on_match==='object'&&data.on_match.action==='execute'?' selected':''}>Execute</option><option value="goto"${data&&typeof data?.on_match==='object'&&data.on_match.action==='goto'?' selected':''}>Goto</option></select></div>
+<div style="flex:1"><label>On Fail</label><select class="sf"><option value="retry"${data&&data.on_fail==='retry'?' selected':''}>Retry</option><option value="skip"${data&&data.on_fail==='skip'?' selected':''}>Skip</option><option value="abort"${data&&data.on_fail==='abort'?' selected':''}>Abort</option><option value="complete"${data&&data.on_fail==='complete'?' selected':''}>Complete</option><option value="execute"${data&&typeof data?.on_fail==='object'&&data.on_fail.action==='execute'?' selected':''}>Execute</option></select></div>
+</div>
+<div class="match-extra" style="margin-top:4px"><label>Goal / Step Name</label><input class="sg" value="${data&&typeof data?.on_match==='object'?(data.on_match.goal||data.on_match.step||''):''}"></div>
+<div class="fail-extra" style="margin-top:4px"><label>Fail Goal</label><input class="sfg" value="${data&&typeof data?.on_fail==='object'?(data.on_fail.goal||''):''}"></div>
+<div style="display:flex;gap:8px;margin-top:8px">
+<div><label>Max Retries</label><input type="number" class="sr" value="${data?data.max_retries:5}" style="width:80px"></div>
+<div><label>Timeout (s)</label><input type="number" class="st" value="${data?data.timeout_seconds:60}" style="width:80px"></div>
+</div>`;
+el('te-steps').appendChild(div);
+setupDrag(div);
+}
+
+function condRow(c){
+const ops=['eq','neq','gt','gte','lt','lte','contains','exists'];
+return`<div class="cond-row"><input placeholder="field" value="${c?c.field:''}"><select>${ops.map(o=>`<option${c&&c.op===o?' selected':''}>${o}</option>`).join('')}</select><input placeholder="value" value="${c?c.value:''}"><button class="btn-sm btn-outline" onclick="this.parentElement.remove()">×</button></div>`;
+}
+
+function renumberSteps(){el('te-steps').querySelectorAll('.step-num').forEach((n,i)=>n.textContent=i+1)}
+
+function collectSteps(){
+return[...el('te-steps').children].map(card=>{
+const conds=[...card.querySelectorAll('.cond-row')].map(r=>{
+const inputs=r.querySelectorAll('input');
+const sel=r.querySelector('select');
+const v=inputs[1].value;
+const cond={field:inputs[0].value,op:sel.value};
+if(sel.value!=='exists'){
+const num=Number(v);
+cond.value=v==='true'?true:v==='false'?false:!isNaN(num)&&v!==''?num:v;
+}
+return cond;
+});
+const sm=card.querySelector('.sm').value;
+const sf=card.querySelector('.sf').value;
+const sg=card.querySelector('.sg').value;
+const sfg=card.querySelector('.sfg').value;
+let on_match=sm;
+if(sm==='execute')on_match={action:'execute',goal:sg};
+if(sm==='goto')on_match={action:'goto',step:sg};
+let on_fail=sf;
+if(sf==='execute')on_fail={action:'execute',goal:sfg};
+return{name:card.querySelector('.sn').value,vision_prompt:card.querySelector('.sv').value,conditions:conds,on_match,on_fail,max_retries:+card.querySelector('.sr').value,timeout_seconds:+card.querySelector('.st').value};
+});
+}
+
+async function saveTask(){
+const steps=collectSteps();
+const body={game_package:el('te-game').value,name:el('te-name').value,steps};
+if(editingTaskId){
+await put('tasks/'+editingTaskId,{name:body.name});
+await put('tasks/'+editingTaskId+'/steps',steps);
+}else{await post('tasks',body)}
+toast('Saved');cancelTaskEditor();loadTasks();
+}
+
+function setupDrag(card){
+card.addEventListener('dragstart',e=>{e.dataTransfer.effectAllowed='move';card.style.opacity='.5'});
+card.addEventListener('dragend',()=>{card.style.opacity='1';renumberSteps()});
+card.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='move'});
+card.addEventListener('drop',e=>{e.preventDefault();const container=el('te-steps');const dragging=container.querySelector('[style*="opacity: 0.5"]')||container.querySelector('[style*="opacity:.5"]');if(dragging&&dragging!==card)container.insertBefore(dragging,card);renumberSteps()});
+}
+
+// LLM
+async function loadLLM(){
+const configs=await api('config/llm');
+configs.forEach(c=>{
+const p=c.role==='vision'?'v':'a';
+el('llm-'+p+'-backend').value=c.backend;
+el('llm-'+p+'-model').value=c.model;
+el('llm-'+p+'-url').value=c.base_url||'';
+el('llm-'+p+'-key').value=c.api_key||'';
+el('llm-'+p+'-tokens').value=c.max_tokens;
+if(p==='a')el('llm-a-tcm').value=c.tool_calling_mode||'native';
+toggleLLMFields(p);
+});
+}
+
+function toggleLLMFields(p){
+const b=el('llm-'+p+'-backend').value;
+const isLocal=b==='openai_compat';
+el('llm-'+p+'-url').classList.toggle('hidden',!isLocal);
+el('llm-'+p+'-url-label').classList.toggle('hidden',!isLocal);
+el('llm-'+p+'-key-label').textContent=isLocal?'API Key (optional)':'API Key';
+if(p==='a'){el('llm-a-tcm').classList.toggle('hidden',!isLocal);el('llm-a-tcm-label').classList.toggle('hidden',!isLocal)}
+}
+
+async function saveLLM(role,p){
+await put('config/llm/'+role,{id:role,role,backend:el('llm-'+p+'-backend').value,model:el('llm-'+p+'-model').value,base_url:el('llm-'+p+'-url').value||null,api_key:el('llm-'+p+'-key').value||null,max_tokens:+el('llm-'+p+'-tokens').value,tool_calling_mode:p==='a'?el('llm-a-tcm').value:'native'});
+toast('LLM config saved');
+}
+
+// GAMES
+async function loadGames(){
+const games=await api('games');
+if(!games.length){el('game-list').innerHTML='<div class="empty">No games added</div>';return}
+el('game-list').innerHTML=games.map(g=>`
+<div class="card">
+<div style="display:flex;justify-content:space-between;align-items:center">
+<div><strong>${g.display_name}</strong><br><small style="color:var(--text2)">${g.package_name}</small>
+${g.vision_system_prompt?'<br><small style="color:var(--accent2)">Has vision prompt</small>':''}
+</div>
+<div style="display:flex;gap:8px;align-items:center">
+<label class="toggle"><input type="checkbox" ${g.active?'checked':''} onchange="toggleGame('${g.package_name}',this.checked)"><span></span></label>
+<button class="btn-outline btn-sm" onclick="editGame('${g.package_name}')">Edit</button>
+<button class="btn-danger btn-sm" onclick="delGame('${g.package_name}')">Del</button>
+</div></div></div>`).join('');
+}
+
+function showAddGame(){el('add-game-form').classList.remove('hidden')}
+async function addGame(){
+await post('games',{package_name:el('ag-pkg').value,display_name:el('ag-name').value,vision_system_prompt:el('ag-prompt').value});
+el('add-game-form').classList.add('hidden');
+toast('Game added');loadGames();
+}
+async function toggleGame(pkg,active){await put('games/'+pkg,{active})}
+async function delGame(pkg){if(confirm('Delete?')){await del('games/'+pkg);loadGames()}}
+async function editGame(pkg){
+const games=await api('games');
+const g=games.find(x=>x.package_name===pkg);
+if(!g)return;
+const prompt=window.prompt('Vision system prompt for '+g.display_name+':',g.vision_system_prompt||'');
+if(prompt!==null)await put('games/'+pkg,{vision_system_prompt:prompt});
+toast('Updated');loadGames();
+}
+
+// SAFETY
+async function loadSafety(){
+const s=await api('config/safety');
+el('sf-apm').value=s.max_actions_per_minute;el('sf-apm-val').textContent=s.max_actions_per_minute;
+el('sf-api').value=s.max_actions_per_invocation;el('sf-api-val').textContent=s.max_actions_per_invocation;
+el('sf-cool').value=s.cooldown_seconds;el('sf-cool-val').textContent=s.cooldown_seconds;
+el('sf-currency').checked=!!s.confirm_premium_currency;
+el('sf-sell').checked=!!s.confirm_sell_discard;
+el('sf-unknown').checked=!!s.confirm_unknown_screen;
+el('sf-key').value=s.emergency_stop_key;
+}
+
+async function saveSafety(){
+await put('config/safety',{max_actions_per_minute:+el('sf-apm').value,max_actions_per_invocation:+el('sf-api').value,cooldown_seconds:+el('sf-cool').value,confirm_premium_currency:el('sf-currency').checked,confirm_sell_discard:el('sf-sell').checked,confirm_unknown_screen:el('sf-unknown').checked,emergency_stop_key:el('sf-key').value});
+toast('Safety config saved');
+}
+
+// SCHEDULES
+async function loadSchedules(){
+const scheds=await api('schedules');
+if(!scheds.length){el('sched-list').innerHTML='<div class="empty">No schedules</div>';return}
+el('sched-list').innerHTML=`<table><thead><tr><th>Task</th><th>Cron</th><th>Enabled</th><th>Last Run</th><th></th></tr></thead><tbody>${scheds.map(s=>`
+<tr><td>${s.task_name||s.task_id}</td><td><code>${s.cron}</code></td>
+<td><label class="toggle"><input type="checkbox" ${s.enabled?'checked':''} onchange="toggleSched('${s.id}',this.checked)"><span></span></label></td>
+<td>${s.last_run||'Never'}</td>
+<td><button class="btn-danger btn-sm" onclick="delSched('${s.id}')">Del</button></td></tr>`).join('')}</tbody></table>`;
+const tasks=await api('tasks');
+el('as-task').innerHTML=tasks.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+}
+
+function showAddSchedule(){el('add-sched-form').classList.remove('hidden')}
+async function addSchedule(){
+await post('schedules',{task_id:el('as-task').value,cron:el('as-cron').value});
+el('add-sched-form').classList.add('hidden');
+toast('Schedule added');loadSchedules();
+}
+async function toggleSched(id,enabled){await put('schedules/'+id,{enabled})}
+async function delSched(id){if(confirm('Delete?')){await del('schedules/'+id);loadSchedules()}}
+
+// Init
+loadStatus();
+setInterval(loadStatus,5000);
+</script>
+</body>
+</html>
