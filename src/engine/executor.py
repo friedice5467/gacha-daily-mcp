@@ -15,6 +15,8 @@ log = structlog.get_logger()
 
 ACTION_SYSTEM_PROMPT = (
     "You are a game automation agent. You have access to tools for interacting with a mobile device. "
+    "You will be given a screenshot of the current screen. Use it to identify exact positions of UI elements. "
+    "All coordinates are normalized (0.0=left/top, 1.0=right/bottom). "
     "Execute the minimum actions needed to achieve the goal, then respond with DONE."
 )
 
@@ -41,6 +43,7 @@ async def execute_goal(
     emergency_stop: EmergencyStop,
     currency_guard: CurrencyGuard,
     unknown_guard: UnknownScreenGuard,
+    screenshot: bytes | None = None,
     max_actions: int = 50,
 ) -> ExecutionResult:
     currency_guard.check(scene)
@@ -65,16 +68,22 @@ async def execute_goal(
     all_calls: list[ToolCall] = []
     actions = 0
 
+    current_screenshot = screenshot
     for _ in range(max_actions):
         await emergency_stop.check()
         await rate_limiter.acquire()
 
-        response = await adapter.complete(messages=messages, tools=tools)
+        response = await adapter.complete(messages=messages, tools=tools, image=current_screenshot)
+        current_screenshot = None  # only send screenshot on first call
+
+        log.info("executor.response", text=response.text[:200] if response.text else None, tool_calls=len(response.tool_calls))
 
         if _is_done(response):
+            log.info("executor.done", actions=actions, reason="DONE in response")
             return ExecutionResult(success=True, actions_taken=actions, tool_calls=all_calls)
 
         if not response.tool_calls:
+            log.info("executor.done", actions=actions, reason="no tool calls")
             return ExecutionResult(success=True, actions_taken=actions, tool_calls=all_calls)
 
         for tc in response.tool_calls:
@@ -95,7 +104,7 @@ async def execute_goal(
                 "content": f"Result: {json.dumps(result, default=str)}",
             })
 
-            log.debug("executor.tool_call", tool=tc.name, args=tc.arguments, actions=actions)
+            log.info("executor.tool_call", tool=tc.name, args=tc.arguments, actions=actions)
 
     return ExecutionResult(
         success=False,

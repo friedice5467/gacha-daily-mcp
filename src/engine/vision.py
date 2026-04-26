@@ -10,11 +10,28 @@ from src.llm.base import LLMAdapter
 
 log = structlog.get_logger()
 
-BASE_SYSTEM_PROMPT = (
-    "You are a game screen analyzer. Describe what you see. "
-    "Report the screen type, visible UI elements with normalized positions, "
-    "and state values. Respond only in JSON."
-)
+BASE_SYSTEM_PROMPT = """\
+You are a game screen analyzer. Respond ONLY with a single JSON object — no markdown, no code fences, no explanation.
+
+Required format (do not add extra keys at the top level):
+{
+  "screen": "<screen_name>",
+  "elements": [
+    {"label": "<button or UI element name>", "type": "<button|text|icon|panel>", "position": [<x 0.0-1.0>, <y 0.0-1.0>]}
+  ],
+  "state": {
+    "<key>": <value>
+  },
+  "confidence": <0.0-1.0>
+}
+
+Rules:
+- "screen" must be a single snake_case identifier (e.g. main_menu, loading, battle_screen).
+- "elements" lists only interactive or significant UI elements. Use flat objects with exactly the keys: label, type, position.
+- "state" holds any extracted values the step prompt asks for (e.g. stamina, counts, boolean flags). Use snake_case keys.
+- "confidence" is your confidence that the screen identification is correct (0.0-1.0).
+- Do not use markdown bold (**), comments, or any text outside the JSON object.\
+"""
 
 
 class UIElement(BaseModel):
@@ -73,6 +90,7 @@ def _parse_scene(text: str) -> SceneState:
     if cleaned.startswith("```"):
         lines = cleaned.splitlines()
         cleaned = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    cleaned = cleaned.replace("**", "")
 
     try:
         data = json.loads(cleaned)

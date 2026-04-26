@@ -108,6 +108,23 @@ def _get_adb_client() -> Any:
     return _adb_client
 
 
+async def _reconnect_adb() -> None:
+    try:
+        adb_config = await _load_adb_config()
+        from src.adb.discovery import connect_device
+
+        client = await connect_device(
+            host=adb_config["host"],
+            port=adb_config["port"],
+            screen_width=adb_config["screenshot_width"],
+            screen_height=adb_config["screenshot_height"],
+        )
+        set_adb_client(client)
+        log.info("adb.reconnected", addr=f"{adb_config['host']}:{adb_config['port']}")
+    except Exception as exc:
+        log.warning("adb.reconnect_failed", error=str(exc))
+
+
 async def _handle_screenshot() -> dict[str, Any]:
     client = _get_adb_client()
     png_bytes = await client.screenshot()
@@ -243,6 +260,8 @@ async def _start_task_run(task_id: str) -> None:
 
     global _emergency_stop
 
+    if _adb_client is None:
+        await _reconnect_adb()
     client = _get_adb_client()
     _emergency_stop = EmergencyStop()
 
@@ -266,13 +285,63 @@ async def _start_task_run(task_id: str) -> None:
         )
         set_current_run({"task_id": task_id, "status": "completed", "success": result.success})
     except Exception as exc:
-        log.error("task_run.failed", task_id=task_id, error=str(exc))
+        import traceback
+        log.error("task_run.failed", task_id=task_id, error=str(exc), traceback=traceback.format_exc())
         set_current_run({"task_id": task_id, "status": "failed", "error": str(exc)})
+
+
+def _configure_logging() -> None:
+    import logging
+    from src.server.log_buffer import append as _buf_append
+
+    class _BufferHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            _buf_append(self.format(record))
+
+    handler = _BufferHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s %(message)s", datefmt="%H:%M:%S"))
+    logging.getLogger().addHandler(handler)
+
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            structlog.processors.TimeStamper(fmt="%H:%M:%S", utc=False),
+            structlog.dev.ConsoleRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(20),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+    )
+
+    import structlog as _sl
+
+    class _CapturingProcessor:
+        def __call__(self, logger: Any, method: str, event_dict: dict) -> dict:
+            line = f"{event_dict.get('timestamp','')} [{event_dict.get('level','info'):<8}] {event_dict.get('event','')}"
+            extras = {k: v for k, v in event_dict.items() if k not in ('timestamp', 'level', 'event', '_record', 'logger')}
+            if extras:
+                line += "  " + "  ".join(f"{k}={v}" for k, v in extras.items())
+            _buf_append(line)
+            return event_dict
+
+    _sl.configure(
+        processors=[
+            _sl.stdlib.add_log_level,
+            _sl.processors.TimeStamper(fmt="%H:%M:%S", utc=False),
+            _CapturingProcessor(),
+            _sl.dev.ConsoleRenderer(),
+        ],
+        wrapper_class=_sl.make_filtering_bound_logger(20),
+        context_class=dict,
+        logger_factory=_sl.PrintLoggerFactory(),
+    )
 
 
 async def main() -> None:
     global _emergency_stop
 
+    _configure_logging()
     db = await init_database()
     log.info("server.starting", port=PORT)
     _emergency_stop = None

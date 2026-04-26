@@ -102,7 +102,21 @@ th{color:var(--text2);font-weight:500}
 <div id="tasks" class="panel">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
 <h3>Tasks</h3>
+<div style="display:flex;gap:8px">
+<button class="btn-outline btn-sm" onclick="showImportModal()">Import JSON</button>
 <button class="btn btn-sm" onclick="showTaskEditor()">+ New Task</button>
+</div>
+</div>
+<div id="import-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100" onclick="if(event.target===this)hideImportModal()">
+<div class="card" style="width:600px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column">
+<h3 style="margin-bottom:12px">Import Task JSON</h3>
+<textarea id="import-json" style="flex:1;min-height:300px;font-family:monospace;font-size:.8rem" placeholder='{"name":"My Task","game_package":"com.example","steps":[...]}'></textarea>
+<div id="import-error" style="color:var(--red);font-size:.8rem;margin-top:6px;display:none"></div>
+<div style="display:flex;gap:8px;margin-top:12px">
+<button class="btn" onclick="importTaskJSON()">Import</button>
+<button class="btn-outline" onclick="hideImportModal()">Cancel</button>
+</div>
+</div>
 </div>
 <div id="task-list"></div>
 <div id="task-editor" class="hidden">
@@ -250,7 +264,7 @@ Block on unknown screens
 
 <script>
 const el=id=>document.getElementById(id);
-const api=async(path,opts={})=>{const r=await fetch('/api/'+path,{headers:{'Content-Type':'application/json'},...opts});return r.json()};
+const api=async(path,opts={})=>{const r=await fetch('/api/'+path,{headers:{'Content-Type':'application/json'},...opts});const text=await r.text();if(!r.ok){let msg;try{const e=JSON.parse(text);msg=e.detail||JSON.stringify(e)}catch{msg=text}throw new Error(msg||r.statusText)}return text?JSON.parse(text):null};
 const post=(path,body)=>api(path,{method:'POST',body:JSON.stringify(body)});
 const put=(path,body)=>api(path,{method:'PUT',body:JSON.stringify(body)});
 const del=path=>api(path,{method:'DELETE'});
@@ -289,14 +303,23 @@ el('current-task').textContent=`Task ${s.current_run.task_id} — ${s.current_ru
 const tasks=await api('tasks');
 const sel=el('run-task-select');
 sel.innerHTML=tasks.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
-loadLogs();
 }
 
-async function loadLogs(){
-const runs=await api('runs?limit=50');
+let _logEs=null;
+function startLogStream(){
+if(_logEs)return;
+_logEs=new EventSource('/api/status/logs/stream');
 const div=el('log-stream');
-div.innerHTML=runs.map(r=>`<div class="log-line">${r.created_at} <span class="action">[${r.action}]</span> ${r.step_name||''} ${r.details||''}</div>`).join('');
+_logEs.onmessage=e=>{
+if(!e.data)return;
+const line=document.createElement('div');
+line.className='log-line';
+line.textContent=e.data;
+div.appendChild(line);
+if(div.children.length>500)div.removeChild(div.firstChild);
 div.scrollTop=div.scrollHeight;
+};
+_logEs.onerror=()=>{_logEs.close();_logEs=null;setTimeout(startLogStream,3000)};
 }
 
 async function runTask(){
@@ -319,6 +342,7 @@ el('task-list').innerHTML=tasks.map(t=>`
 <div><strong>${t.name}</strong><br><small style="color:var(--text2)">${t.game_package} · ${t.step_count} steps</small></div>
 <div style="display:flex;gap:4px">
 <button class="btn-outline btn-sm" onclick="editTask('${t.id}')">Edit</button>
+<button class="btn-outline btn-sm" onclick="exportTask('${t.id}','${t.name}')">Export</button>
 <button class="btn-outline btn-sm" onclick="dupTask('${t.id}')">Dup</button>
 <button class="btn-danger btn-sm" onclick="delTask('${t.id}')">Del</button>
 </div></div></div>`).join('');
@@ -343,7 +367,36 @@ t.steps.forEach(s=>addStep(s));
 async function editTask(id){await showTaskEditor(id)}
 async function dupTask(id){await post('tasks/'+id+'/duplicate',{});toast('Duplicated');loadTasks()}
 async function delTask(id){if(confirm('Delete?')){await del('tasks/'+id);toast('Deleted');loadTasks()}}
+async function exportTask(id,name){
+  const t=await api('tasks/'+id);
+  const exportData={name:t.name,game_package:t.game_package,steps:t.steps.map(s=>({name:s.name,vision_prompt:s.vision_prompt,conditions:s.conditions,on_match:s.on_match,on_fail:s.on_fail,max_retries:s.max_retries,timeout_seconds:s.timeout_seconds}))};
+  const blob=new Blob([JSON.stringify(exportData,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(name||'task').replace(/[^a-z0-9_-]/gi,'_')+'.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 function cancelTaskEditor(){el('task-editor').classList.add('hidden');el('task-list').classList.remove('hidden')}
+
+function showImportModal(){el('import-modal').classList.remove('hidden');el('import-modal').style.display='flex';el('import-json').value='';hideImportError()}
+function hideImportModal(){el('import-modal').style.display='none';el('import-modal').classList.add('hidden')}
+function showImportError(msg){const e=el('import-error');e.textContent=msg;e.style.display='block'}
+function hideImportError(){el('import-error').style.display='none'}
+async function importTaskJSON(){
+  hideImportError();
+  let body;
+  try{body=JSON.parse(el('import-json').value)}catch(e){showImportError('Invalid JSON: '+e.message);return}
+  if(!body.name){showImportError('Missing required field: name');return}
+  if(!body.game_package){showImportError('Missing required field: game_package');return}
+  if(!Array.isArray(body.steps)){showImportError('Missing required field: steps (must be array)');return}
+  try{
+    await post('tasks',body);
+    hideImportModal();
+    toast('Task imported');
+    loadTasks();
+  }catch(e){showImportError('Import failed: '+(e.message||'unknown error'))}
+}
 
 let stepCounter=0;
 function addStep(data){
@@ -528,6 +581,7 @@ async function delSched(id){if(confirm('Delete?')){await del('schedules/'+id);lo
 // Init
 loadStatus();
 setInterval(loadStatus,5000);
+startLogStream();
 </script>
 </body>
 </html>

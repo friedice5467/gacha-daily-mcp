@@ -1,6 +1,6 @@
 # gacha-mcp
 
-A Python MCP server that automates mobile game dailies on BlueStacks via ADB. Uses a dual-LLM architecture: one vision model reads the screen, a rule engine decides what to do, and an action model executes through ADB. Game-agnostic — works with any game by configuring task steps through a web dashboard.
+Don't have time to play your gacha games? Here's a solution, a Python MCP server that automates mobile game dailies on BlueStacks via ADB. Uses a dual-LLM architecture: one vision model reads the screen, a rule engine decides what to do, and an action model executes through ADB. Game-agnostic — works with any game by configuring task steps through a web dashboard.
 
 All configuration lives in SQLite. No `.env` files.
 
