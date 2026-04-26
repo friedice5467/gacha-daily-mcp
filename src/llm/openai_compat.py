@@ -89,6 +89,8 @@ def _convert_tools(tools: list[dict]) -> list[dict]:
 
 
 def _parse_response(response: Any) -> LLMResponse:
+    if not response.choices:
+        raise LLMError(f"Empty response from model (no choices). Response: {response}")
     choice = response.choices[0]
     message = choice.message
 

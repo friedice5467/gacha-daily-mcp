@@ -140,7 +140,7 @@ async def run_task(
                 result = await _handle_action(
                     step.on_match, step, scene_dict, task, action_adapter,
                     tool_handler, rate_limiter, emergency_stop,
-                    currency_guard, unknown_guard,
+                    currency_guard, unknown_guard, screenshot,
                 )
                 total_actions += result.get("actions", 0)
 
@@ -169,7 +169,7 @@ async def run_task(
                 fail_result = await _handle_fail_action(
                     step.on_fail, step, scene_dict, task, action_adapter,
                     tool_handler, rate_limiter, emergency_stop,
-                    currency_guard, unknown_guard,
+                    currency_guard, unknown_guard, screenshot,
                 )
                 total_actions += fail_result.get("actions", 0)
 
@@ -233,6 +233,7 @@ async def _handle_action(
     emergency_stop: EmergencyStop,
     currency_guard: CurrencyGuard,
     unknown_guard: UnknownScreenGuard,
+    screenshot: bytes | None = None,
 ) -> dict[str, Any]:
     if action == "next":
         return {}
@@ -252,6 +253,7 @@ async def _handle_action(
                 emergency_stop=emergency_stop,
                 currency_guard=currency_guard,
                 unknown_guard=unknown_guard,
+                screenshot=screenshot,
             )
             return {"actions": result.actions_taken}
         if action.get("action") == "goto":
@@ -274,6 +276,7 @@ async def _handle_fail_action(
     emergency_stop: EmergencyStop,
     currency_guard: CurrencyGuard,
     unknown_guard: UnknownScreenGuard,
+    screenshot: bytes | None = None,
 ) -> dict[str, Any]:
     if action == "retry":
         return {}
@@ -294,6 +297,7 @@ async def _handle_fail_action(
             emergency_stop=emergency_stop,
             currency_guard=currency_guard,
             unknown_guard=unknown_guard,
+            screenshot=screenshot,
         )
         return {"actions": result.actions_taken}
     return {}
